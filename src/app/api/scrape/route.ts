@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from 'next/server'
 
 // 判断是否为有效的新闻或博客类型的URL（与搜索API保持一致）
 function isValidContentUrl(url: string): boolean {

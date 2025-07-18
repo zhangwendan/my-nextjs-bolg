@@ -1,10 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, mkdir, readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
-import * as mammoth from 'mammoth'
-import pdfParse from 'pdf-parse'
-import * as XLSX from 'xlsx'
+import { type NextRequest, NextResponse } from 'next/server'
 
 // 支持的文件类型
 const SUPPORTED_TYPES = {
@@ -20,6 +14,14 @@ const SUPPORTED_TYPES = {
 
 export async function POST(request: NextRequest) {
   try {
+    // 检查是否在Vercel环境中
+    if (process.env.VERCEL) {
+      return NextResponse.json(
+        { success: false, message: '知识库上传功能在Vercel环境中暂不可用，请在本地环境使用' },
+        { status: 400 }
+      )
+    }
+
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
 
@@ -29,6 +31,14 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // 只在本地环境中导入依赖模块
+    const { writeFile, mkdir, readFile } = await import('fs/promises')
+    const { existsSync } = await import('fs')
+    const path = await import('path')
+    const mammoth = await import('mammoth')
+    const pdfParse = (await import('pdf-parse')).default
+    const XLSX = await import('xlsx')
 
     // 确保知识库目录存在
     const knowledgeDir = path.join(process.cwd(), 'knowledge')
@@ -61,7 +71,7 @@ export async function POST(request: NextRequest) {
         // 提取文本内容
         let content = ''
         try {
-          content = await extractTextContent(file, buffer)
+          content = await extractTextContent(file, buffer, { mammoth, pdfParse, XLSX })
         } catch (extractError) {
           console.error(`提取文本失败 ${file.name}:`, extractError)
           content = `无法提取文本内容: ${extractError instanceof Error ? extractError.message : '未知错误'}`
@@ -112,7 +122,8 @@ export async function POST(request: NextRequest) {
 }
 
 // 提取文本内容
-async function extractTextContent(file: File, buffer: Buffer): Promise<string> {
+async function extractTextContent(file: File, buffer: Buffer, libs: any): Promise<string> {
+  const { mammoth, pdfParse, XLSX } = libs
   const fileType = file.type || 'text/plain'
   const fileName = file.name.toLowerCase()
 
@@ -166,7 +177,7 @@ async function extractTextContent(file: File, buffer: Buffer): Promise<string> {
       let content = ''
       
       // 遍历所有工作表
-      workbook.SheetNames.forEach((sheetName, index) => {
+      workbook.SheetNames.forEach((sheetName: string, index: number) => {
         const worksheet = workbook.Sheets[sheetName]
         if (worksheet) {
           const sheetData = XLSX.utils.sheet_to_csv(worksheet)

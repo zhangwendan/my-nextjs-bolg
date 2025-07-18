@@ -1,7 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { readdir, readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,6 +12,22 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    // 检查是否在Vercel环境中
+    if (process.env.VERCEL) {
+      console.log('❌ 在Vercel环境中，知识库功能不可用')
+      return NextResponse.json({
+        success: true,
+        results: [],
+        query,
+        message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用'
+      })
+    }
+
+    // 只在本地环境中导入fs模块
+    const { readdir, readFile } = await import('fs/promises')
+    const { existsSync } = await import('fs')
+    const path = await import('path')
 
     const knowledgeDir = path.join(process.cwd(), 'knowledge')
     console.log('📁 搜索目录:', knowledgeDir)
@@ -84,81 +97,55 @@ export async function POST(request: NextRequest) {
       results: limitedResults,
       totalCount: searchResults.length,
       query,
-      debug: {
-        searchTerms,
-        totalFiles: jsonFiles.length,
-        matchedFiles: searchResults.length
-      }
     })
 
   } catch (error) {
-    console.error('❌ 知识库搜索错误:', error)
+    console.error('知识库搜索错误:', error)
     return NextResponse.json(
       { 
         success: false, 
-        message: error instanceof Error ? error.message : '搜索失败'
+        message: error instanceof Error ? error.message : '搜索失败，请检查网络连接'
       },
       { status: 500 }
     )
   }
 }
 
-// 计算匹配分数（修复中文支持）
+// 计算匹配分数
 function calculateMatchScore(fileInfo: any, searchTerms: string[]): number {
   let score = 0
   const fileName = fileInfo.name.toLowerCase()
-  const content = fileInfo.content.toLowerCase()
+  const fileContent = fileInfo.content.toLowerCase()
 
-  console.log(`🔍 正在计算匹配分数 - 文件: ${fileName}`)
-  console.log(`📄 内容预览: ${content.substring(0, 200)}...`)
+  console.log(`🔍 正在计算匹配分数 - 文件: ${fileInfo.name}`)
+  console.log(`📄 内容预览: ${fileInfo.content.substring(0, 200)}...`)
 
   for (const term of searchTerms) {
     console.log(`🔤 搜索词条: "${term}"`)
     
-    // 文件名匹配权重更高
-    const nameMatches = (fileName.match(new RegExp(escapeRegExp(term), 'g')) || []).length
-    score += nameMatches * 3
-    console.log(`📛 文件名匹配: ${nameMatches} 次，得分: ${nameMatches * 3}`)
+    // 文件名匹配（权重更高）
+    const fileNameMatches = (fileName.match(new RegExp(term, 'g')) || []).length
+    console.log(`📛 文件名匹配: ${fileNameMatches} 次，得分: ${fileNameMatches * 10}`)
+    score += fileNameMatches * 10
 
-    // 内容匹配 - 使用简单的字符串包含匹配
-    const contentMatches = (content.match(new RegExp(escapeRegExp(term), 'g')) || []).length
-    score += contentMatches
+    // 内容匹配
+    const contentMatches = (fileContent.match(new RegExp(term, 'g')) || []).length
     console.log(`📄 内容正则匹配: ${contentMatches} 次，得分: ${contentMatches}`)
+    score += contentMatches
 
-    // 简单的包含匹配（适用于中文）
-    if (content.includes(term)) {
-      score += 2 // 额外奖励分数
+    // 额外加分：如果内容包含完整词条
+    if (fileContent.includes(term)) {
       console.log(`🎯 内容包含匹配: +2 分`)
+      score += 2
       
-      // 显示匹配位置的上下文
-      const index = content.indexOf(term)
-      const context = content.substring(Math.max(0, index - 20), Math.min(content.length, index + term.length + 20))
+      // 显示匹配上下文
+      const index = fileContent.indexOf(term)
+      const start = Math.max(0, index - 20)
+      const end = Math.min(fileContent.length, index + 20)
+      const context = fileContent.substring(start, end)
       console.log(`📍 匹配上下文: "${context}"`)
     } else {
       console.log(`❌ 内容不包含词条: "${term}"`)
-    }
-
-    // 特殊调试：对于"设备"这个词，显示更多信息
-    if (term === '设备') {
-      console.log(`🔧 特殊调试 - 搜索"设备":`);
-      console.log(`   - 原始搜索词: "${term}"`);
-      console.log(`   - 搜索词长度: ${term.length}`);
-      console.log(`   - 内容是否包含: ${content.includes(term)}`);
-      console.log(`   - 内容长度: ${content.length}`);
-      
-      // 查找所有"设备"出现的位置
-      const positions = [];
-      let pos = content.indexOf(term);
-      while (pos !== -1) {
-        positions.push(pos);
-        pos = content.indexOf(term, pos + 1);
-      }
-      console.log(`   - 出现位置: ${positions}`);
-      console.log(`   - 出现次数: ${positions.length}`);
-      
-      if (positions.length > 0) {
-        console.log(`   - 第一个匹配上下文: "${content.substring(Math.max(0, positions[0] - 10), Math.min(content.length, positions[0] + 20))}"`);
-      }
     }
   }
 
@@ -166,38 +153,42 @@ function calculateMatchScore(fileInfo: any, searchTerms: string[]): number {
   return score
 }
 
-// 转义正则表达式特殊字符
-function escapeRegExp(string: string): string {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
 // 提取相关片段
-function extractRelevantSnippet(content: string, searchTerms: string[], maxLength: number = 300): string {
-  const lowerContent = content.toLowerCase()
-  
-  // 找到第一个匹配的位置
-  let firstMatchIndex = -1
-  for (const term of searchTerms) {
-    const index = lowerContent.indexOf(term)
-    if (index !== -1 && (firstMatchIndex === -1 || index < firstMatchIndex)) {
-      firstMatchIndex = index
+function extractRelevantSnippet(content: string, searchTerms: string[]): string {
+  const maxSnippetLength = 200
+  let bestSnippet = ''
+  let maxMatches = 0
+
+  // 将内容分段
+  const segments = content.split(/[.!?。！？]/)
+
+  for (const segment of segments) {
+    const lowerSegment = segment.toLowerCase()
+    let matches = 0
+
+    // 计算该段落中包含的搜索词条数量
+    for (const term of searchTerms) {
+      if (lowerSegment.includes(term)) {
+        matches++
+      }
+    }
+
+    // 如果这个段落匹配更多词条，就选择它
+    if (matches > maxMatches) {
+      maxMatches = matches
+      bestSnippet = segment.trim()
     }
   }
 
-  if (firstMatchIndex === -1) {
-    // 如果没有找到匹配，返回开头部分
-    return content.substring(0, maxLength) + (content.length > maxLength ? '...' : '')
+  // 如果没找到特别相关的段落，返回开头
+  if (!bestSnippet) {
+    bestSnippet = content.substring(0, maxSnippetLength)
   }
 
-  // 在匹配位置前后提取内容
-  const start = Math.max(0, firstMatchIndex - 100)
-  const end = Math.min(content.length, firstMatchIndex + maxLength - 100)
-  
-  let snippet = content.substring(start, end)
-  
-  // 添加省略号
-  if (start > 0) snippet = '...' + snippet
-  if (end < content.length) snippet = snippet + '...'
-  
-  return snippet
+  // 确保片段不超过最大长度
+  if (bestSnippet.length > maxSnippetLength) {
+    bestSnippet = bestSnippet.substring(0, maxSnippetLength) + '...'
+  }
+
+  return bestSnippet
 } 

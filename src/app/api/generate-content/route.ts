@@ -1,7 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,20 +29,20 @@ export async function POST(request: NextRequest) {
         // 自动搜索相关知识库内容
         console.log('自动搜索知识库内容:', keyword)
         const knowledgeResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/knowledge/search`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: keyword })
-      })
-      
-      if (knowledgeResponse.ok) {
-        const knowledgeData = await knowledgeResponse.json()
-        if (knowledgeData.success && knowledgeData.results?.length > 0) {
-          knowledgeContent = '\n知识库相关内容：\n'
-          knowledgeData.results.slice(0, 5).forEach((file: any, index: number) => {
-            knowledgeContent += `${index + 1}. ${file.name}\n内容：${file.content.substring(0, 800)}...\n\n`
-          })
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: keyword })
+        })
+        
+        if (knowledgeResponse.ok) {
+          const knowledgeData = await knowledgeResponse.json()
+          if (knowledgeData.success && knowledgeData.results?.length > 0) {
+            knowledgeContent = '\n知识库相关内容：\n'
+            knowledgeData.results.slice(0, 5).forEach((file: any, index: number) => {
+              knowledgeContent += `${index + 1}. ${file.name}\n内容：${file.content.substring(0, 800)}...\n\n`
+            })
           }
         }
       }
@@ -149,30 +146,42 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// 获取指定知识库文件的内容
-async function getSelectedKnowledgeContent(fileIds: string[]): Promise<string> {
-  const knowledgeDir = path.join(process.cwd(), 'knowledge')
-  let content = '\n选定的知识库内容：\n'
-  
-  for (let i = 0; i < fileIds.length; i++) {
-    const fileId = fileIds[i]
-    const metaPath = path.join(knowledgeDir, `${fileId}.json`)
-    
-    try {
-      if (existsSync(metaPath)) {
-        const fileContent = await readFile(metaPath, 'utf-8')
-        const fileInfo = JSON.parse(fileContent)
-        
-        if (fileInfo.id && fileInfo.name && fileInfo.content) {
-          content += `${i + 1}. ${fileInfo.name}\n`
-          content += `内容：${fileInfo.content.substring(0, 1500)}${fileInfo.content.length > 1500 ? '...' : ''}\n\n`
-        }
-      }
-    } catch (error) {
-      console.error(`读取知识库文件失败 ${fileId}:`, error)
-      content += `${i + 1}. 文件读取失败 (ID: ${fileId})\n\n`
-    }
+// 获取选中的知识库内容
+async function getSelectedKnowledgeContent(selectedFiles: string[]): Promise<string> {
+  // 检查是否在Vercel环境中
+  if (process.env.VERCEL) {
+    console.log('Vercel环境中跳过知识库文件读取')
+    return ''
   }
-  
-  return content
+
+  try {
+    // 动态导入fs模块
+    const { readFile } = await import('fs/promises')
+    const { existsSync } = await import('fs')
+    const path = await import('path')
+
+    const knowledgeDir = path.join(process.cwd(), 'knowledge')
+    let content = '\n选中的知识库文件内容：\n'
+    
+    for (const fileId of selectedFiles) {
+      try {
+        const metaPath = path.join(knowledgeDir, `${fileId}.json`)
+        
+        if (existsSync(metaPath)) {
+          const fileContent = await readFile(metaPath, 'utf-8')
+          const fileInfo = JSON.parse(fileContent)
+          
+          content += `\n文件: ${fileInfo.name}\n`
+          content += `内容: ${fileInfo.content.substring(0, 1000)}...\n\n`
+        }
+      } catch (error) {
+        console.error(`读取知识库文件失败 ${fileId}:`, error)
+      }
+    }
+    
+    return content
+  } catch (error) {
+    console.error('获取知识库内容失败:', error)
+    return ''
+  }
 } 

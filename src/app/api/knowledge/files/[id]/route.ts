@@ -1,20 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { unlink, readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { type NextRequest, NextResponse } from 'next/server'
+
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
 
 export async function DELETE(
   request: NextRequest,
-  context: { params: { id: string } }
+  context: RouteParams
 ) {
   try {
-    const { id } = context.params
-    /if (!id) {
+    const { id } = await context.params;
+    if (!id) {
       return NextResponse.json(
         { success: false, message: '文件ID不能为空' },
         { status: 400 }
+      );
+    }
+
+    // 检查是否在Vercel环境中
+    if (process.env.VERCEL) {
+      return NextResponse.json(
+        { success: false, message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用' },
+        { status: 400 }
       )
     }
+
+    // 只在本地环境中导入fs模块
+    const { unlink, readFile } = await import('fs/promises')
+    const { existsSync } = await import('fs')
+    const path = await import('path')
 
     const knowledgeDir = path.join(process.cwd(), 'knowledge')
     const metaPath = path.join(knowledgeDir, `${id}.json`)

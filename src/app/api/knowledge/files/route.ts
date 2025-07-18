@@ -1,10 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { readdir, readFile } from 'fs/promises'
-import { existsSync } from 'fs'
-import path from 'path'
+import { type NextRequest, NextResponse } from 'next/server'
 
 export async function GET(request: NextRequest) {
   try {
+    // 检查是否在Vercel环境中
+    if (process.env.VERCEL) {
+      // 在Vercel环境中，返回模拟的知识库文件数据
+      return NextResponse.json({
+        success: true,
+        files: [],
+        count: 0,
+        message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用'
+      })
+    }
+
+    // 只在本地环境中导入fs模块
+    const { readdir, readFile } = await import('fs/promises')
+    const { existsSync } = await import('fs')
+    const path = await import('path')
+
     const knowledgeDir = path.join(process.cwd(), 'knowledge')
     
     // 检查知识库目录是否存在
