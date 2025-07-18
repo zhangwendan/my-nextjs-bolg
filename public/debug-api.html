@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API调试工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .info {
+            background: #d1ecf1;
+            border-color: #bee5eb;
+            color: #0c5460;
+        }
+        .warning {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+        }
+        .status {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            background: #17a2b8;
+            color: white;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div id="status" class="status">调试工具已加载</div>
+    
+    <div class="container">
+        <h1>知识库API调试工具</h1>
+        <div class="result info">
+            <strong>使用说明：</strong>
+            <br>1. 确保开发服务器正在运行
+            <br>2. 点击下面的按钮测试API连接
+            <br>3. 查看响应内容和错误信息
+            <br>4. 如有问题，请将结果截图发送给开发者
+        </div>
+        
+        <p><strong>当前访问地址:</strong> <span id="currentUrl"></span></p>
+        
+        <div>
+            <button id="testFilesBtn" onclick="safeTest('testKnowledgeFiles')">测试获取文件列表</button>
+            <button id="testSearchBtn" onclick="safeTest('testKnowledgeSearch')">测试知识库搜索</button>
+            <button id="testUploadBtn" onclick="safeTest('testUpload')">测试文件上传</button>
+            <button onclick="clearResults()">清空结果</button>
+        </div>
+        
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // 全局错误处理
+        window.onerror = function(message, source, lineno, colno, error) {
+            console.error('全局错误:', message, source, lineno, colno, error);
+            addResult('❌ JavaScript错误', `错误信息: ${message}\n文件: ${source}\n行号: ${lineno}\n列号: ${colno}`, 'error');
+            updateStatus('发生错误');
+            return true;
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+            console.error('未处理的Promise拒绝:', event.reason);
+            addResult('❌ Promise错误', `错误信息: ${event.reason}`, 'error');
+            updateStatus('Promise错误');
+        });
+
+        function updateStatus(message) {
+            const statusEl = document.getElementById('status');
+            if (statusEl) {
+                statusEl.textContent = message;
+                setTimeout(() => {
+                    statusEl.textContent = '调试工具运行中';
+                }, 3000);
+            }
+        }
+
+        // 显示当前访问的URL
+        try {
+            document.getElementById('currentUrl').textContent = window.location.href;
+        } catch (e) {
+            console.error('设置URL失败:', e);
+        }
+
+        function addResult(title, content, type = 'success') {
+            try {
+                const resultsDiv = document.getElementById('results');
+                if (!resultsDiv) {
+                    console.error('找不到results元素');
+                    return;
+                }
+                
+                const resultDiv = document.createElement('div');
+                resultDiv.className = 'result ' + type;
+                
+                const timestamp = new Date().toLocaleTimeString();
+                const safeContent = String(content || '无内容').substring(0, 5000); // 限制内容长度
+                resultDiv.innerHTML = `<strong>[${timestamp}] ${title}</strong>\n${safeContent}`;
+                
+                resultsDiv.insertBefore(resultDiv, resultsDiv.firstChild);
+                
+                // 限制结果数量
+                const results = resultsDiv.children;
+                if (results.length > 20) {
+                    resultsDiv.removeChild(results[results.length - 1]);
+                }
+            } catch (e) {
+                console.error('添加结果失败:', e);
+            }
+        }
+
+        function safeTest(functionName) {
+            try {
+                updateStatus(`正在执行: ${functionName}`);
+                const btn = event.target;
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '测试中...';
+                }
+                
+                // 执行对应的测试函数
+                if (functionName === 'testKnowledgeFiles') {
+                    testKnowledgeFiles().finally(() => {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.textContent = '测试获取文件列表';
+                        }
+                    });
+                } else if (functionName === 'testKnowledgeSearch') {
+                    testKnowledgeSearch().finally(() => {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.textContent = '测试知识库搜索';
+                        }
+                    });
+                } else if (functionName === 'testUpload') {
+                    testUpload().finally(() => {
+                        if (btn) {
+                            btn.disabled = false;
+                            btn.textContent = '测试文件上传';
+                        }
+                    });
+                }
+                
+            } catch (e) {
+                console.error(`执行${functionName}失败:`, e);
+                addResult('❌ 执行错误', `函数${functionName}执行失败: ${e.message}`, 'error');
+                updateStatus('执行失败');
+            }
+        }
+
+        async function testKnowledgeFiles() {
+            try {
+                addResult('🔄 开始测试', '正在调用 /api/knowledge/files ...', 'info');
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒超时
+                
+                const response = await fetch('/api/knowledge/files', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                addResult('📊 响应状态', `HTTP ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                const responseText = await response.text();
+                
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        addResult('✅ API正常', `成功获取到 ${data.count || 0} 个文件\n${JSON.stringify(data, null, 2)}`, 'success');
+                    } catch (parseError) {
+                        addResult('❌ JSON解析错误', `响应不是有效的JSON:\n${responseText}`, 'error');
+                    }
+                } else {
+                    addResult('❌ HTTP错误', `状态码: ${response.status}\n响应内容:\n${responseText}`, 'error');
+                }
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addResult('❌ 请求超时', '请求超过10秒被取消', 'error');
+                } else {
+                    addResult('❌ 网络错误', `无法连接到API:\n${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function testKnowledgeSearch() {
+            try {
+                addResult('🔄 开始搜索测试', '正在调用 /api/knowledge/search ...', 'info');
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 10000);
+                
+                const response = await fetch('/api/knowledge/search', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ query: '测试搜索' }),
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                addResult('📊 搜索响应状态', `HTTP ${response.status} ${response.statusText}`, response.ok ? 'success' : 'error');
+                
+                const responseText = await response.text();
+                
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        addResult('✅ 搜索API正常', `搜索结果: ${data.results?.length || 0} 条\n${JSON.stringify(data, null, 2)}`, 'success');
+                    } catch (parseError) {
+                        addResult('❌ 搜索JSON解析错误', `响应不是有效的JSON:\n${responseText}`, 'error');
+                    }
+                } else {
+                    addResult('❌ 搜索HTTP错误', `状态码: ${response.status}\n响应内容:\n${responseText}`, 'error');
+                }
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addResult('❌ 搜索请求超时', '搜索请求超过10秒被取消', 'error');
+                } else {
+                    addResult('❌ 搜索网络错误', `无法连接到搜索API:\n${error.message}`, 'error');
+                }
+            }
+        }
+
+        async function testUpload() {
+            try {
+                addResult('🔄 开始上传测试', '创建测试文件并上传...', 'info');
+                
+                // 创建一个简单的测试文件
+                const testContent = '这是一个测试文件内容\n用于验证上传功能\n时间:' + new Date().toLocaleString();
+                
+                let file;
+                try {
+                    const blob = new Blob([testContent], { type: 'text/plain' });
+                    file = new File([blob], 'test-upload.txt', { type: 'text/plain' });
+                    addResult('📄 文件创建成功', `文件名: ${file.name}\n文件大小: ${file.size} 字节\n文件类型: ${file.type}`, 'info');
+                } catch (fileError) {
+                    addResult('❌ 文件创建失败', `无法创建测试文件: ${fileError.message}`, 'error');
+                    return;
+                }
+                
+                const formData = new FormData();
+                formData.append('files', file);
+                
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒超时
+                
+                addResult('📤 开始上传', '正在发送上传请求...', 'info');
+                
+                const response = await fetch('/api/knowledge/upload', {
+                    method: 'POST',
+                    body: formData,
+                    signal: controller.signal
+                });
+                
+                clearTimeout(timeoutId);
+                
+                addResult('📊 上传响应状态', `HTTP ${response.status} ${response.statusText}`, response.ok ? 'success' : 'warning');
+                
+                const responseText = await response.text();
+                
+                if (response.ok) {
+                    try {
+                        const data = JSON.parse(responseText);
+                        addResult('✅ 上传API正常', `上传成功: ${data.uploadedCount || 0} 个文件\n${JSON.stringify(data, null, 2)}`, 'success');
+                    } catch (parseError) {
+                        addResult('❌ 上传JSON解析错误', `响应不是有效的JSON:\n${responseText}`, 'error');
+                    }
+                } else {
+                    addResult('❌ 上传HTTP错误', `状态码: ${response.status}\n响应内容:\n${responseText}`, 'error');
+                }
+                
+            } catch (error) {
+                if (error.name === 'AbortError') {
+                    addResult('❌ 上传请求超时', '上传请求超过30秒被取消', 'error');
+                } else {
+                    addResult('❌ 上传网络错误', `无法连接到上传API:\n${error.message}\n错误堆栈:\n${error.stack || '无堆栈信息'}`, 'error');
+                }
+            }
+        }
+
+        function clearResults() {
+            try {
+                const resultsDiv = document.getElementById('results');
+                if (resultsDiv) {
+                    resultsDiv.innerHTML = '';
+                    addResult('🧹 结果已清空', '调试结果已清空', 'info');
+                }
+            } catch (e) {
+                console.error('清空结果失败:', e);
+            }
+        }
+
+        // 页面加载时自动测试
+        window.onload = function() {
+            try {
+                addResult('🚀 页面加载完成', `当前时间: ${new Date().toLocaleString()}\n浏览器: ${navigator.userAgent}`, 'info');
+                updateStatus('页面已加载');
+                
+                // 自动测试文件列表API
+                setTimeout(() => {
+                    testKnowledgeFiles().catch(e => {
+                        console.error('自动测试失败:', e);
+                        addResult('❌ 自动测试失败', `自动测试出错: ${e.message}`, 'error');
+                    });
+                }, 2000);
+            } catch (e) {
+                console.error('页面加载处理失败:', e);
+            }
+        };
+    </script>
+</body>
+</html> 

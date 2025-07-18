@@ -1,0 +1,61 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { readdir, readFile } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
+
+export async function GET(request: NextRequest) {
+  try {
+    const knowledgeDir = path.join(process.cwd(), 'knowledge')
+    
+    // 检查知识库目录是否存在
+    if (!existsSync(knowledgeDir)) {
+      return NextResponse.json({
+        success: true,
+        files: []
+      })
+    }
+
+    // 读取目录中的所有JSON文件（元数据文件）
+    const files = await readdir(knowledgeDir)
+    const jsonFiles = files.filter(file => file.endsWith('.json'))
+
+    const knowledgeFiles = []
+
+    for (const jsonFile of jsonFiles) {
+      try {
+        const filePath = path.join(knowledgeDir, jsonFile)
+        const fileContent = await readFile(filePath, 'utf-8')
+        const fileInfo = JSON.parse(fileContent)
+        
+        // 验证文件信息结构
+        if (fileInfo.id && fileInfo.name && fileInfo.content !== undefined) {
+          knowledgeFiles.push(fileInfo)
+        }
+      } catch (error) {
+        console.error(`读取文件元数据失败 ${jsonFile}:`, error)
+        // 跳过损坏的文件，继续处理其他文件
+      }
+    }
+
+    // 按上传时间倒序排列
+    knowledgeFiles.sort((a, b) => 
+      new Date(b.uploadTime).getTime() - new Date(a.uploadTime).getTime()
+    )
+
+    return NextResponse.json({
+      success: true,
+      files: knowledgeFiles,
+      count: knowledgeFiles.length
+    })
+
+  } catch (error) {
+    console.error('获取文件列表错误:', error)
+    return NextResponse.json(
+      { 
+        success: false, 
+        message: error instanceof Error ? error.message : '获取文件列表失败'
+      },
+      { status: 500 }
+    )
+  }
+} 
