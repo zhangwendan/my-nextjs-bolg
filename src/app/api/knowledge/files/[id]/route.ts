@@ -5,12 +5,11 @@ import path from 'path'
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id } = params
-
-    if (!id) {
+    const { id } = context.params
+    /if (!id) {
       return NextResponse.json(
         { success: false, message: '文件ID不能为空' },
         { status: 400 }
