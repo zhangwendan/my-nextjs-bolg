@@ -61,12 +61,6 @@ export async function DELETE(
 
   } catch (error) {
     console.error('删除文件错误:', error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        message: error instanceof Error ? error.message : '删除文件失败'
-      },
-      { status: 500 }
-    )
+    return NextResponse.json({ success: false, message: '删除文件错误' }, { status: 500 })
   }
 } 
