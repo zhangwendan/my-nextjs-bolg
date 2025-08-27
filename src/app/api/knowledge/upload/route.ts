@@ -1,4 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { writeFile, mkdir } from 'fs/promises'
+import { existsSync } from 'fs'
+import path from 'path'
 
 // 支持的文件类型
 const SUPPORTED_TYPES = {
@@ -32,37 +35,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 只在本地环境中导入依赖模块
-    const { writeFile, mkdir, readFile } = await import('fs/promises')
-    const { existsSync } = await import('fs')
-    const path = await import('path')
-    const mammoth = await import('mammoth')
-    const pdfParse = (await import('pdf-parse')).default
-    const XLSX = await import('xlsx')
-
     // 确保知识库目录存在
     const knowledgeDir = path.join(process.cwd(), 'knowledge')
     if (!existsSync(knowledgeDir)) {
       await mkdir(knowledgeDir, { recursive: true })
     }
 
-    const uploadedFiles = []
-    const errors = []
+    const uploadedFiles: any[] = []
+    const errors: string[] = []
 
     for (const file of files) {
       try {
         console.log(`处理文件: ${file.name}, 类型: ${file.type}, 大小: ${file.size}`)
 
         // 检查文件类型
-        if (!SUPPORTED_TYPES[file.type as keyof typeof SUPPORTED_TYPES] && !file.name.endsWith('.txt') && !file.name.endsWith('.md')) {
+        const fileExtension = path.extname(file.name).toLowerCase()
+        const supportedExtensions = ['.txt', '.md', '.csv', '.pdf', '.doc', '.docx', '.xls', '.xlsx']
+        
+        if (!SUPPORTED_TYPES[file.type as keyof typeof SUPPORTED_TYPES] && !supportedExtensions.includes(fileExtension)) {
           errors.push(`不支持的文件类型: ${file.name}`)
           continue
         }
 
-        // 生成文件ID和路径
+        // 生成安全的文件名
+        const baseName = path.basename(file.name)
+        const safeBaseName = baseName
+          .replace(/[\\/]+/g, '_')
+          .replace(/[^a-zA-Z0-9._-\u4e00-\u9fa5]/g, '_')
+
+        // 生成文件ID和保存路径
         const fileId = Date.now().toString() + '-' + Math.random().toString(36).substr(2, 9)
-        const fileName = `${fileId}-${file.name}`
-        const filePath = path.join(knowledgeDir, fileName)
+        const storedFileName = `${fileId}-${safeBaseName}`
+        const filePath = path.join(knowledgeDir, storedFileName)
 
         // 保存原始文件
         const buffer = Buffer.from(await file.arrayBuffer())
@@ -71,7 +75,7 @@ export async function POST(request: NextRequest) {
         // 提取文本内容
         let content = ''
         try {
-          content = await extractTextContent(file, buffer, { mammoth, pdfParse, XLSX })
+          content = await extractTextContent(fileExtension, buffer)
         } catch (extractError) {
           console.error(`提取文本失败 ${file.name}:`, extractError)
           content = `无法提取文本内容: ${extractError instanceof Error ? extractError.message : '未知错误'}`
@@ -80,12 +84,12 @@ export async function POST(request: NextRequest) {
         // 保存文件信息到JSON
         const fileInfo = {
           id: fileId,
-          name: file.name,
+          name: baseName,
           type: file.type || 'text/plain',
           size: file.size,
           content: content,
           uploadTime: new Date().toISOString(),
-          path: fileName
+          path: storedFileName
         }
 
         // 保存到JSON文件
@@ -93,7 +97,7 @@ export async function POST(request: NextRequest) {
         await writeFile(metaPath, JSON.stringify(fileInfo, null, 2))
 
         uploadedFiles.push(fileInfo)
-        console.log(`文件上传成功: ${file.name}`)
+        console.log(`文件上传成功: ${fileInfo.name}`)
 
       } catch (error) {
         console.error(`处理文件失败 ${file.name}:`, error)
@@ -122,44 +126,48 @@ export async function POST(request: NextRequest) {
 }
 
 // 提取文本内容
-async function extractTextContent(file: File, buffer: Buffer, libs: any): Promise<string> {
-  const { mammoth, pdfParse, XLSX } = libs
-  const fileType = file.type || 'text/plain'
-  const fileName = file.name.toLowerCase()
-
+async function extractTextContent(fileExtension: string, buffer: Buffer): Promise<string> {
   try {
-    // 文本文件
-    if (fileType.startsWith('text/') || fileName.endsWith('.txt') || fileName.endsWith('.md')) {
+    // 文本/Markdown/CSV
+    if (['.txt', '.md', '.csv'].includes(fileExtension)) {
       return buffer.toString('utf-8')
     }
 
-    // CSV文件
-    if (fileType === 'text/csv' || fileName.endsWith('.csv')) {
-      return buffer.toString('utf-8')
-    }
-
-    // PDF文件
-    if (fileType === 'application/pdf' || fileName.endsWith('.pdf')) {
-      console.log('开始处理PDF文件:', fileName)
-      const data = await pdfParse(buffer)
-      const content = data.text.trim()
-      console.log('PDF内容提取成功，长度:', content.length)
-      return content || '无法提取PDF内容'
-    }
-
-    // Word文档 (.docx)
-    if (fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || fileName.endsWith('.docx')) {
-      console.log('开始处理DOCX文件:', fileName)
-      const result = await mammoth.extractRawText({ buffer })
-      const content = result.value.trim()
-      console.log('DOCX内容提取成功，长度:', content.length)
-      return content || '无法提取DOCX内容'
-    }
-
-    // Word文档 (.doc) - 老版本格式，mammoth有限支持
-    if (fileType === 'application/msword' || fileName.endsWith('.doc')) {
-      console.log('开始处理DOC文件:', fileName)
+    // PDF
+    if (fileExtension === '.pdf') {
+      console.log('开始处理PDF文件')
       try {
+        const pdfParse = (await import('pdf-parse')).default
+        const data = await pdfParse(buffer)
+        const content = data.text.trim()
+        console.log('PDF内容提取成功，长度:', content.length)
+        return content || '无法提取PDF内容'
+      } catch (pdfError) {
+        console.error('PDF处理失败:', pdfError)
+        return 'PDF文件处理失败，请确认文件未损坏'
+      }
+    }
+
+    // DOCX
+    if (fileExtension === '.docx') {
+      console.log('开始处理DOCX文件')
+      try {
+        const mammoth = await import('mammoth')
+        const result = await mammoth.extractRawText({ buffer })
+        const content = result.value.trim()
+        console.log('DOCX内容提取成功，长度:', content.length)
+        return content || '无法提取DOCX内容'
+      } catch (docxError) {
+        console.error('DOCX处理失败:', docxError)
+        return 'DOCX文件处理失败，请确认文件未损坏'
+      }
+    }
+
+    // DOC（尽力）
+    if (fileExtension === '.doc') {
+      console.log('开始处理DOC文件')
+      try {
+        const mammoth = await import('mammoth')
         const result = await mammoth.extractRawText({ buffer })
         const content = result.value.trim()
         console.log('DOC内容提取成功，长度:', content.length)
@@ -170,33 +178,34 @@ async function extractTextContent(file: File, buffer: Buffer, libs: any): Promis
       }
     }
 
-    // Excel文件
-    if (fileType.includes('sheet') || fileName.endsWith('.xls') || fileName.endsWith('.xlsx')) {
-      console.log('开始处理Excel文件:', fileName)
-      const workbook = XLSX.read(buffer, { type: 'buffer' })
-      let content = ''
-      
-      // 遍历所有工作表
-      workbook.SheetNames.forEach((sheetName: string, index: number) => {
-        const worksheet = workbook.Sheets[sheetName]
-        if (worksheet) {
-          const sheetData = XLSX.utils.sheet_to_csv(worksheet)
-          
-          if (sheetData.trim()) {
-            content += `=== 工作表: ${sheetName} ===\n`
-            content += sheetData + '\n\n'
+    // Excel
+    if (['.xls', '.xlsx'].includes(fileExtension)) {
+      console.log('开始处理Excel文件')
+      try {
+        const XLSX = await import('xlsx')
+        const workbook = XLSX.read(buffer, { type: 'buffer' })
+        let content = ''
+        workbook.SheetNames.forEach((sheetName: string) => {
+          const worksheet = workbook.Sheets[sheetName]
+          if (worksheet) {
+            const sheetData = XLSX.utils.sheet_to_csv(worksheet)
+            if (sheetData.trim()) {
+              content += `=== 工作表: ${sheetName} ===\n` + sheetData + '\n\n'
+            }
           }
-        }
-      })
-      
-      console.log('Excel内容提取成功，长度:', content.length)
-      return content.trim() || '无法提取Excel内容'
+        })
+        console.log('Excel内容提取成功，长度:', content.length)
+        return content.trim() || '无法提取Excel内容'
+      } catch (xlsError) {
+        console.error('Excel处理失败:', xlsError)
+        return 'Excel文件处理失败，请确认文件未损坏'
+      }
     }
 
-    // 默认处理
-    return `文件: ${file.name}\n类型: ${fileType}\n大小: ${file.size} 字节\n上传时间: ${new Date().toLocaleString('zh-CN')}\n\n注意：此文件格式暂不支持内容提取`
+    // 默认
+    return `文件: ${fileExtension}\n类型: 未知\n上传时间: ${new Date().toLocaleString('zh-CN')}\n\n注意：此文件格式暂不支持内容提取`
   } catch (error) {
     console.error('文档内容提取失败:', error)
-    return `文件: ${file.name}\n内容提取失败: ${error instanceof Error ? error.message : '未知错误'}`
+    return `文件内容提取失败: ${error instanceof Error ? error.message : '未知错误'}`
   }
 } 
