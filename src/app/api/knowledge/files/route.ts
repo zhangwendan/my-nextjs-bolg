@@ -1,17 +1,14 @@
 import { type NextRequest, NextResponse } from 'next/server'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    // 检查是否在Vercel环境中
-    if (process.env.VERCEL) {
-      // 在Vercel环境中，返回模拟的知识库文件数据
-      return NextResponse.json({
-        success: true,
-        files: [],
-        count: 0,
-        message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用'
-      })
-    }
+    // 移除Vercel环境限制，让功能在生产环境也能使用
+    // if (process.env.VERCEL) {
+    //   return NextResponse.json(
+    //     { success: false, message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用' },
+    //     { status: 400 }
+    //   )
+    // }
 
     // 只在本地环境中导入fs模块
     const { readdir, readFile } = await import('fs/promises')

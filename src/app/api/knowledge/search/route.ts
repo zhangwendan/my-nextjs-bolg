@@ -13,17 +13,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 检查是否在Vercel环境中
-    if (process.env.VERCEL) {
-      console.log('❌ 在Vercel环境中，知识库功能不可用')
-      return NextResponse.json({
-        success: true,
-        results: [],
-        query,
-        message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用'
-      })
-    }
-
     // 只在本地环境中导入fs模块
     const { readdir, readFile } = await import('fs/promises')
     const { existsSync } = await import('fs')

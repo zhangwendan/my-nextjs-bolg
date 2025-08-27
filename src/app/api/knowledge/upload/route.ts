@@ -17,13 +17,13 @@ const SUPPORTED_TYPES = {
 
 export async function POST(request: NextRequest) {
   try {
-    // 检查是否在Vercel环境中
-    if (process.env.VERCEL) {
-      return NextResponse.json(
-        { success: false, message: '知识库上传功能在Vercel环境中暂不可用，请在本地环境使用' },
-        { status: 400 }
-      )
-    }
+    // 移除Vercel环境限制，让功能在生产环境也能使用
+    // if (process.env.VERCEL) {
+    //   return NextResponse.json(
+    //     { success: false, message: '知识库上传功能在Vercel环境中暂不可用，请在本地环境使用' },
+    //     { status: 400 }
+    //   )
+    // }
 
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]

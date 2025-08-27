@@ -6,24 +6,24 @@ interface RouteParams {
 
 export async function DELETE(
   request: NextRequest,
-  context: RouteParams
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await context.params;
     if (!id) {
       return NextResponse.json(
-        { success: false, message: '文件ID不能为空' },
-        { status: 400 }
-      );
-    }
-
-    // 检查是否在Vercel环境中
-    if (process.env.VERCEL) {
-      return NextResponse.json(
-        { success: false, message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用' },
+        { success: false, message: '缺少文件ID' },
         { status: 400 }
       )
     }
+
+    // 移除Vercel环境限制，让功能在生产环境也能使用
+    // if (process.env.VERCEL) {
+    //   return NextResponse.json(
+    //     { success: false, message: '知识库功能在Vercel环境中暂不可用，请在本地环境使用' },
+    //     { status: 400 }
+    //   )
+    // }
 
     // 只在本地环境中导入fs模块
     const { unlink, readFile } = await import('fs/promises')

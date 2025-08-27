@@ -18,6 +18,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 移除Vercel环境限制，让功能在生产环境也能使用
+    // if (process.env.VERCEL) {
+    //   return NextResponse.json(
+    //     { success: false, message: '内容生成功能在Vercel环境中暂不可用，请在本地环境使用' },
+    //     { status: 400 }
+    //   )
+    // }
+
     // 获取知识库内容
     let knowledgeContent = ''
     try {
