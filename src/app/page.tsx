@@ -64,6 +64,10 @@ export default function HomePage() {
   const [language, setLanguage] = useState('zh-cn')
   const [country, setCountry] = useState('cn')
   
+  // API Key 历史记录
+  const [apiKeyHistory, setApiKeyHistory] = useState<string[]>([])
+  const [showApiKeyHistory, setShowApiKeyHistory] = useState(false)
+  
   // AI 模型配置
   const [aiHubMixApiKey, setAiHubMixApiKey] = useState('')
   const [outlineModel, setOutlineModel] = useState('gpt-4')
@@ -155,6 +159,7 @@ export default function HomePage() {
     const savedWpConfig = localStorage.getItem('wpConfig')
     const savedOutlineModelHistory = localStorage.getItem('outlineModelHistory')
     const savedContentModelHistory = localStorage.getItem('contentModelHistory')
+    const savedApiKeyHistory = localStorage.getItem('apiKeyHistory')
     
     if (savedOutlineHistory) {
       setOutlinePromptHistory(JSON.parse(savedOutlineHistory))
@@ -174,10 +179,31 @@ export default function HomePage() {
     if (savedContentModelHistory) {
       setContentModelHistory(JSON.parse(savedContentModelHistory))
     }
+    if (savedApiKeyHistory) {
+      setApiKeyHistory(JSON.parse(savedApiKeyHistory))
+    }
     
     // 加载知识库文件
     loadKnowledgeFiles()
   }, [])
+
+  // 监听点击外部关闭API Key历史记录下拉框
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element
+      if (!target.closest('.api-key-container')) {
+        setShowApiKeyHistory(false)
+      }
+    }
+
+    if (showApiKeyHistory) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showApiKeyHistory])
 
   // 加载知识库文件列表
   const loadKnowledgeFiles = async () => {
@@ -256,13 +282,13 @@ export default function HomePage() {
     
     savePromptToHistory(type, prompt, customName)
     
-    // 重置状态
+    // 重置对话框状态
     if (type === 'outline') {
-      setOutlineSaveName('')
       setShowOutlineSaveDialog(false)
+      setOutlineSaveName('')
     } else {
-      setContentSaveName('')
       setShowContentSaveDialog(false)
+      setContentSaveName('')
     }
   }
 
@@ -927,6 +953,40 @@ export default function HomePage() {
     }
   }
 
+  // 保存API Key到历史记录
+  const saveApiKeyToHistory = (key: string) => {
+    if (!key.trim()) {
+      toast.error('API Key不能为空')
+      return
+    }
+    
+    // 检查是否已存在
+    if (apiKeyHistory.includes(key)) {
+      toast.error('该API Key已存在于历史记录中')
+      return
+    }
+    
+    // 添加到历史记录开头，保留最新10条
+    const newHistory = [key, ...apiKeyHistory.slice(0, 9)]
+    setApiKeyHistory(newHistory)
+    localStorage.setItem('apiKeyHistory', JSON.stringify(newHistory))
+    toast.success('API Key已保存到历史记录')
+  }
+
+  // 选择API Key
+  const selectApiKey = (key: string) => {
+    setApiKey(key)
+    setShowApiKeyHistory(false)
+  }
+
+  // 删除API Key历史记录
+  const deleteApiKeyFromHistory = (keyToDelete: string) => {
+    const newHistory = apiKeyHistory.filter(key => key !== keyToDelete)
+    setApiKeyHistory(newHistory)
+    localStorage.setItem('apiKeyHistory', JSON.stringify(newHistory))
+    toast.success('API Key已从历史记录中删除')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-6xl mx-auto">
@@ -976,13 +1036,70 @@ export default function HomePage() {
                 <CardContent className="space-y-4">
                   <div>
                     <Label htmlFor="api-key">搜索 API Key</Label>
-                    <Input
-                      id="api-key"
-                      type="password"
-                      placeholder="输入你的搜索 API Key"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                    />
+                    <div className="flex gap-2">
+                      <div className="relative flex-1 api-key-container">
+                        <Input
+                          id="api-key"
+                          type="password"
+                          placeholder="输入你的搜索 API Key"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                        />
+                        {apiKeyHistory.length > 0 && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 px-2"
+                            onClick={() => setShowApiKeyHistory(!showApiKeyHistory)}
+                          >
+                            <History className="w-3 h-3" />
+                          </Button>
+                        )}
+                        
+                        {/* API Key 历史记录下拉框 */}
+                        {showApiKeyHistory && apiKeyHistory.length > 0 && (
+                          <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 max-h-60 overflow-y-auto">
+                            {apiKeyHistory.map((key, index) => (
+                              <div
+                                key={index}
+                                className="flex items-center justify-between p-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                              >
+                                <div
+                                  className="flex-1 truncate text-sm"
+                                  onClick={() => selectApiKey(key)}
+                                  title={key}
+                                >
+                                  {key.substring(0, 8)}...{key.substring(key.length - 4)}
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-6 w-6 p-0 text-red-500 hover:text-red-700"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    deleteApiKeyFromHistory(key)
+                                  }}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => saveApiKeyToHistory(apiKey)}
+                        disabled={!apiKey.trim()}
+                        className="whitespace-nowrap"
+                      >
+                        保存
+                      </Button>
+                    </div>
                     <p className="text-xs text-gray-500 mt-1">
                       API Key 将保存在本地，不会上传到服务器
                     </p>
